@@ -1,0 +1,97 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-paper: #ffffff;
+  --color-stone: #f1f0ec;
+  --color-line: #d9d7d0;
+  --color-ink: #1f2326;
+  --color-muted: #566068;
+  --color-forest: #1d4b38;
+  --color-forest-deep: #12332a;
+  --color-tape: #f2b705;
+  --color-wa: #0f7d43;
+  --color-wa-deep: #0b6334;
+  --color-danger: #a4281f;
+  --font-sans: var(--font-body), system-ui, sans-serif;
+  --font-display: var(--font-heading), var(--font-body), system-ui, sans-serif;
+}
+
+:root {
+  color-scheme: light;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  letter-spacing: -0.015em;
+  line-height: 1.12;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-tape);
+  outline-offset: 2px;
+}
+
+/* The tape-measure strip: the one recurring visual device. Ticks every 8px, taller every 40px. */
+.ruler {
+  height: 14px;
+  background-color: var(--color-tape);
+  background-image:
+    repeating-linear-gradient(90deg, var(--color-ink) 0 1.5px, transparent 1.5px 40px),
+    repeating-linear-gradient(90deg, var(--color-ink) 0 1px, transparent 1px 8px);
+  background-size: 100% 100%, 100% 45%;
+  background-repeat: no-repeat, repeat-x;
+  background-position: 0 0, 0 0;
+}
+
+.ruler-forest {
+  background-color: var(--color-forest);
+  background-image:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.75) 0 1.5px, transparent 1.5px 40px),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.5) 0 1px, transparent 1px 8px);
+  background-size: 100% 100%, 100% 45%;
+  background-repeat: no-repeat, repeat-x;
+}
+
+@keyframes hero-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.hero-in {
+  animation: hero-in 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.hero-in-2 {
+  animation-delay: 0.12s;
+}
+.hero-in-3 {
+  animation-delay: 0.24s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .hero-in {
+    animation: none;
+  }
+}

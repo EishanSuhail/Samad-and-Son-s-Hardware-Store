@@ -1,0 +1,301 @@
+// Samad and Son's Hardware Store — database schema
+// Money is stored as integer paise (₹1 = 100 paise) to avoid floating-point errors.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────────────────── Enums ─────────────────────────
+
+enum AdminRole {
+  OWNER
+  STAFF
+}
+
+enum PricingMode {
+  FIXED
+  PRICE_ON_REQUEST
+}
+
+enum MovementType {
+  INITIAL
+  ADJUSTMENT
+  ORDER_DEDUCTION
+  ORDER_RESTORE
+  IMPORT
+}
+
+enum FulfilmentMethod {
+  PICKUP
+  DELIVERY
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  READY_FOR_PICKUP
+  DISPATCHED
+  COMPLETED
+  CANCELLED
+}
+
+enum QuotationStatus {
+  NEW
+  UNDER_REVIEW
+  QUOTATION_PREPARED
+  SENT_TO_CUSTOMER
+  ACCEPTED
+  REJECTED
+  CLOSED
+}
+
+enum ContactMethod {
+  PHONE
+  WHATSAPP
+}
+
+// ───────────────────────── Admin ─────────────────────────
+
+model AdminUser {
+  id               String    @id @default(cuid())
+  email            String    @unique
+  name             String
+  passwordHash     String
+  role             AdminRole @default(STAFF)
+  isActive         Boolean   @default(true)
+  failedLoginCount Int       @default(0)
+  lockedUntil      DateTime?
+  lastLoginAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  auditLogs          AuditLog[]
+  inventoryMovements InventoryMovement[]
+}
+
+model AuditLog {
+  id          String     @id @default(cuid())
+  adminUserId String?
+  adminUser   AdminUser? @relation(fields: [adminUserId], references: [id], onDelete: SetNull)
+  action      String
+  entity      String
+  entityId    String?
+  details     Json?
+  ipAddress   String?
+  createdAt   DateTime   @default(now())
+
+  @@index([createdAt])
+  @@index([entity, entityId])
+  @@index([adminUserId])
+}
+
+// ───────────────────────── Catalogue ─────────────────────────
+
+model Category {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  slug        String   @unique
+  description String?
+  imageUrl    String?
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  products Product[]
+
+  @@index([isActive, sortOrder])
+}
+
+model Brand {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  createdAt DateTime @default(now())
+
+  products Product[]
+}
+
+// Configurable units of measurement (Piece, Box, Kilogram, ...)
+model Unit {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  shortName String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
+model Product {
+  id               String      @id @default(cuid())
+  sku              String      @unique
+  name             String
+  slug             String      @unique
+  categoryId       String
+  category         Category    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  subcategory      String?
+  brandId          String?
+  brand            Brand?      @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  shortDescription String?
+  description      String?
+  unit             String      @default("Piece")
+  pricingMode      PricingMode @default(PRICE_ON_REQUEST)
+  pricePaise       Int?
+  salePricePaise   Int?
+  trackInventory   Boolean     @default(false)
+  stockQuantity    Int         @default(0)
+  lowStockThreshold Int        @default(5)
+  isFeatured       Boolean     @default(false)
+  isActive         Boolean     @default(true)
+  // true for development placeholder data; the UI labels these clearly.
+  isSample         Boolean     @default(false)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  images             ProductImage[]
+  attributes         ProductAttribute[]
+  inventoryMovements InventoryMovement[]
+  orderItems         OrderItem[]
+  quotationItems     QuotationItem[]
+
+  @@index([categoryId, isActive])
+  @@index([brandId])
+  @@index([isActive, isFeatured])
+  @@index([name])
+}
+
+model ProductImage {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  publicId  String?
+  altText   String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([productId, sortOrder])
+}
+
+// Flexible, category-specific specifications (e.g. Thickness = 18 mm).
+model ProductAttribute {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name      String
+  value     String
+  sortOrder Int     @default(0)
+
+  @@unique([productId, name])
+  @@index([name, value])
+}
+
+// ───────────────────────── Inventory ─────────────────────────
+
+model InventoryMovement {
+  id             String       @id @default(cuid())
+  productId      String
+  product        Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  type           MovementType
+  quantityChange Int
+  quantityAfter  Int
+  reason         String?
+  orderId        String?
+  adminUserId    String?
+  adminUser      AdminUser?   @relation(fields: [adminUserId], references: [id], onDelete: SetNull)
+  createdAt      DateTime     @default(now())
+
+  // Guarantees a given order can only deduct / restore stock once per product.
+  // (Postgres treats NULL orderId rows as distinct, so manual adjustments are unaffected.)
+  @@unique([orderId, productId, type])
+  @@index([productId, createdAt])
+}
+
+// ───────────────────────── Orders ─────────────────────────
+
+model Order {
+  id                String           @id @default(cuid())
+  reference         String           @unique
+  status            OrderStatus      @default(PENDING)
+  customerName      String
+  phone             String
+  fulfilment        FulfilmentMethod @default(PICKUP)
+  address           String?
+  notes             String?
+  internalNotes     String?
+  // Estimated, computed on the server from configured prices only.
+  subtotalPaise     Int?
+  hasUnpricedItems  Boolean          @default(false)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  items OrderItem[]
+
+  @@index([status, createdAt])
+  @@index([createdAt])
+}
+
+// Snapshot of product details at the time of the order.
+model OrderItem {
+  id             String  @id @default(cuid())
+  orderId        String
+  order          Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId      String?
+  product        Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  productName    String
+  sku            String
+  unit           String
+  quantity       Int
+  unitPricePaise Int?
+
+  @@index([orderId])
+}
+
+// ───────────────────────── Quotations ─────────────────────────
+
+model Quotation {
+  id              String          @id @default(cuid())
+  reference       String          @unique
+  status          QuotationStatus @default(NEW)
+  customerName    String
+  phone           String
+  preferredContact ContactMethod  @default(WHATSAPP)
+  notes           String?
+  adminResponse   String?
+  quotedTotalPaise Int?
+  internalNotes   String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  items QuotationItem[]
+
+  @@index([status, createdAt])
+}
+
+model QuotationItem {
+  id          String    @id @default(cuid())
+  quotationId String
+  quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  productId   String?
+  product     Product?  @relation(fields: [productId], references: [id], onDelete: SetNull)
+  productName String
+  sku         String
+  unit        String
+  quantity    Int
+
+  @@index([quotationId])
+}
+
+// ───────────────────────── Settings ─────────────────────────
+
+// Simple key/value store so the owner can edit the site without touching code.
+model Setting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
